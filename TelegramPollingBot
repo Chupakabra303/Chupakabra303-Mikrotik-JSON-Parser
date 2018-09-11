@@ -1,0 +1,45 @@
+# ---------------------------------- TelegramPollingBot --------------------------------------------------------------
+/system script run JParseFunctions
+# Telegram Bot API Token / Chat ID
+:local TToken "123.......:ABC.............."
+:local TChatId "1234567890"
+
+:global TelegramOffset
+:if ([:typeof $TelegramOffset] != "num") do={:set TelegramOffset 0}
+
+:global fJParse
+:global fJParsePrintVar
+:global fURLEncode
+:global Jdebug false
+:global JSONIn
+:global JParseOut
+:global Results
+
+:do {/tool fetch url="https://api.telegram.org/bot$TToken/deleteWebhook"  http-method=get keep-result=no} on-error={:put "deleteWebhook error"}
+:do {:set JSONIn ([/tool fetch url="https://api.telegram.org/bot$TToken/getUpdates\?chat_id=$TChatId&offset=$TelegramOffset" output=user as-value]->"data")} on-error={:put "getUpdates error"}
+
+:set JParseOut [$fJParse]
+:set Results ($JParseOut->"result")
+
+:if ([:len $Results]>0) do={
+  :foreach k,v in=$Results do={
+    :if (any ($v->"message"->"text")) do={
+      :if ($v->"message"->"text" ~ "uptime") do={
+        /tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[/system resource get uptime]" keep-result=no
+      } else={
+        :if ($v->"message"->"text" ~ "ip") do={
+          /tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[/ip dhcp-client print as-value]" keep-result=no
+        } else={
+          :if ($v->"message"->"text" ~ "parse") do={
+            /tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[$fJParsePrintVar]" keep-result=no
+          } else={
+            /tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[$fURLEncode ($v->"message"->"text")]" keep-result=no
+          }
+        }
+      }
+    }
+    :set $TelegramOffset ($v->"update_id" + 1)
+  }
+} else={
+  :set $TelegramOffset 0
+}

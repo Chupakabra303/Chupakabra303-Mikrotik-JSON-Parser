@@ -1,3 +1,4 @@
 # Chupakabra303-Mikrotik-JSON-Parser
 
-+ Example "TelegramWebhookBot"
+Example 1 "TelegramPollingBot"
+Example 2 "TelegramWebhookBot"
