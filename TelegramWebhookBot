@@ -1,0 +1,85 @@
+# ---------------------------------- TelegramWebhookBot --------------------------------------------------------------
+:if ([:len [/system script job find script=TelegramWebhook]] <= 1) do={
+#:while (true) do={
+  :global TelegramWebhookPackets
+# URL / Port for Webhook
+  :local TWebhookURL "https://router.domain"
+  :local TWebhookPort "8443"
+
+# Create Telegram webhook mangle action
+  :if ([:len [/ip firewall mangle find dst-port=$TWebhookPort]] = 0) do={
+    /ip firewall mangle add action=accept chain=prerouting connection-state=new dst-port=$TWebhookPort protocol=tcp src-address=149.154.167.192/26 comment="Telegram"
+  }
+
+  :if ([/ip firewall mangle get [find dst-port=$TWebhookPort] packets] != $TelegramWebhookPackets) do={
+    /system script run JParseFunctions
+# Telegram Bot API Token / Chat ID
+    :local TToken "123.......:ABC.............."
+    :local TChatId "1234567890"
+    :global TelegramOffset
+    :global fJParse
+    :global fJParsePrintVar
+    :global fURLEncode
+    :global Jdebug false
+    :global JSONIn
+    :global JParseOut
+ 
+    :if ([:typeof $TelegramOffset] != "num") do={:set TelegramOffset 0}
+    :put "getWebhookInfo" 
+    :do {:set JSONIn ([/tool fetch url="https://api.telegram.org/bot$TToken/getWebhookInfo" output=user as-value]->"data")} on-error={:put "getWebhookInfo error"}
+    :set JParseOut [$fJParse]
+    :put $JParseOut
+    :if ($JParseOut->"result"->"pending_update_count" > 0) do={
+      :put "pending_update_count > 0"
+      :do {/tool fetch url="https://api.telegram.org/bot$TToken/deleteWebhook"  http-method=get keep-result=no}  on-error={:put "deleteWebhook error"}
+      :put "getUpdates"
+      :do {:set JSONIn ([/tool fetch url="https://api.telegram.org/bot$TToken/getUpdates\?chat_id=$TChatId&offset=$TelegramOffset" output=user as-value]->"data")} on-error={:put "getUpdates error"}
+      :set JParseOut [$fJParse]
+      :put $JParseOut
+      :if ([:len ($JParseOut->"result")] > 0) do={
+        :foreach k,v in=($JParseOut->"result") do={
+          :if (any ($v->"message"->"text")) do={
+            :if ($v->"message"->"text" ~ "uptime") do={
+              :do {/tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[/system resource get uptime]" keep-result=no} on-error={:put  "sendmessage error"}
+            } else={
+              :if ($v->"message"->"text" ~ "ip") do={
+                :do {/tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[/ip dhcp-client print as-value]" keep-result=no} on-error={:put "sendmessage error"}
+              } else={
+                :if ($v->"message"->"text" ~ "parse") do={
+                  :do {/tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId"  http-method=post  http-data="text=$[$fJParsePrintVar]" keep-result=no} on-error={:put   "sendmessage error"}
+                } else={
+                  :if ($v->"message"->"text" ~ "add") do={
+                    :local addIP [:toip [:pick ($v->"message"->"text") 4 [:len ($v->"message"->"text")]]]
+                    :if ([:typeof $addIP] = "ip") do={
+                      :do {/ip firewall address-list add address=$addIP list=ExtAccessIPList timeout=10m comment="temp"} on-error={:put "ip in list error"}
+                    }
+                    :local Str1 ""
+                    :foreach item in=[/ip firewall address-list print as-value where list=ExtAccessIPList and dynamic] do={:set Str1 ($Str1 . "$($item->"address") $($item->"timeout") $($item->"comment")\r\n")}
+                    :do {/tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId" http-method=post  http-data="text=$Str1" keep-result=no} on-error={:put "sendmessage error"}
+                  } else={
+                    :put ($v->"message"->"text")
+                    :do {/tool fetch url="https://api.telegram.org/bot$TToken/sendmessage\?chat_id=$TChatId" http-method=post  http-data="text=$[$fURLEncode ($v->"message"->"text")]" keep-result=no} on-error={:put  "sendmessage error"}
+                  }
+                }
+              }
+            }
+          }
+          :set $TelegramOffset ($v->"update_id" + 1)
+        }
+      } else={
+#        :set $TelegramOffset 0
+      }
+      :put "getUpdates"
+      :do {/tool fetch url="https://api.telegram.org/bot$TToken/getUpdates\?chat_id=$TChatId&offset=$TelegramOffset" keep-result=no} on-error={:put "getUpdates error"}
+      :put "setWebhook"
+      :do {/tool fetch url="https://api.telegram.org/bot$TToken/setWebhook\?url=$TWebhookURL:$TWebhookPort" keep-result=no} on-error={:put "setWebhook error"}
+    } else={
+      :if ($JParseOut->"result"->"url"="") do={
+        :put "setWebhook"
+        :do {/tool fetch url="https://api.telegram.org/bot$TToken/setWebhook\?url=$TWebhookURL:$TWebhookPort" keep-result=no} on-error={:put "setWebhook error"}
+      }
+    }
+  :set TelegramWebhookPackets [/ip firewall mangle get [find dst-port=$TWebhookPort] packets]
+  :put "--------------------------------------------------"
+  }
+}
