@@ -1,5 +1,5 @@
 # ---------------------------------- TelegramWebhookBot --------------------------------------------------------------
-:if ([:len [/system script job find script=TelegramWebhook]] <= 1) do={
+:if ([:len [/system script job find script=TelegramWebhookBot]] <= 1) do={
 #:while (true) do={
   :global TelegramWebhookPackets
 # URL / Port for Webhook
